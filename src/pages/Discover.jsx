@@ -3,14 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { getAttractions, generateItinerary, getDestinationPhoto } from '../services/api';
 import { saveTrip, getPreferences, savePreferences } from '../services/storage';
 
-const IDENTITIES = [
-  { key: 'adult', label: '成人' },
-  { key: 'student', label: '学生' },
-  { key: 'senior', label: '老人' },
-  { key: 'military', label: '军人' },
-  { key: 'child', label: '儿童' },
-];
-
 function calcMyPrice(ticket, identity) {
   if (ticket === 0) return 0;
   if (identity === 'military') return 0;
@@ -23,6 +15,7 @@ export default function Discover({ trips, onRefresh }) {
   const [prefs, setPrefs] = useState(null);
   const [destination, setDestination] = useState('');
   const [days, setDays] = useState(3);
+  const [dates, setDates] = useState('');
   const [budget, setBudget] = useState(3000);
   const [identity, setIdentity] = useState('adult');
   const [attractions, setAttractions] = useState([]);
@@ -35,7 +28,7 @@ export default function Discover({ trips, onRefresh }) {
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
-    getPreferences().then(p => { setPrefs(p); if (p?.identity) setIdentity(p.identity); if (p?.budget) setBudget(p.budget); });
+    getPreferences().then(p => { setPrefs(p); if (p?.identity) setIdentity(p.identity); });
     // Get rough location for route planning
     fetch('https://ipapi.co/json/').then(r=>r.json()).then(d=>{
       setUserLocation({lat:d.latitude,lon:d.longitude,city:d.city,region:d.region});
@@ -78,18 +71,13 @@ export default function Discover({ trips, onRefresh }) {
     try {
       savePreferences({ ...prefs, identity, budget });
       const diet = prefs?.diet || '';
-      // Build enhanced prompt with location awareness
-      let locationHint = '';
-      if (userLocation) {
-        locationHint = `\n用户当前位置：${userLocation.city||''}（经纬度约${userLocation.lat},${userLocation.lon}）。请以用户当前位置为起点规划路线，确保景点之间距离合理、顺路，不要东跑西跑。`;
-      }
       const content = await generateItinerary({
-        destination: destination.trim(), days, budget, style: prefs?.style || '综合', dates: '',
-        selectedSpots: picked, identity, diet, locationHint,
+        destination: destination.trim(), days, budget, style: prefs?.style || '综合', dates: dates||'',
+        selectedSpots: picked, identity, diet,
       });
       const trip = await saveTrip({
         id: Date.now(), destination: destination.trim(), days, budget, identity,
-        content, spots: picked,
+        content, spots: picked, startDate: dates||null,
       });
       onRefresh();
       navigate(`/plan/${trip.id}`);
@@ -105,7 +93,7 @@ export default function Discover({ trips, onRefresh }) {
   };
 
   return (
-    <div style={{background:'#FBF7F0',minHeight:'100vh',position:'relative',overflow:'hidden'}}>
+    <div style={{background:'#FBF7F0',minHeight:'100vh',position:'relative',overflowY:'auto',WebkitOverflowScrolling:'touch',paddingBottom:'6rem'}}>
       <div className="blob w-56 h-56" style={{background:'rgba(199,91,57,0.05)',top:'-5rem',right:'-3rem',position:'absolute'}} />
 
       <div style={{position:'relative',zIndex:1,padding:'1.5rem 1.25rem'}}>
@@ -123,13 +111,15 @@ export default function Discover({ trips, onRefresh }) {
           </button>
         </div>
 
-        {/* Compact settings bar */}
+        {/* Days + date selector */}
         <div style={{display:'flex',alignItems:'center',gap:'0.5rem',flexWrap:'wrap',marginBottom:'0.75rem'}}>
-          <span style={{fontSize:'0.7rem',color:'#8B7E74'}}>天数</span>
+          <span style={{fontSize:'0.7rem',color:'#8B7E74'}}>玩几天</span>
           {[1,2,3,4,5,7].map(d=><button key={d} className={`chip ${days===d?'active':''}`} style={{fontSize:'0.7rem',padding:'0.3rem 0.7rem'}} onClick={()=>setDays(d)}>{d}天</button>)}
           <input type="number" min="1" max="30" placeholder="自定义" style={{width:'3.5rem',padding:'0.3rem',borderRadius:'99px',border:'1px solid #d1d5db',fontSize:'0.7rem',textAlign:'center',outline:'none',background:'#FFFBF5'}} onChange={e=>{const v=parseInt(e.target.value);if(v>0&&v<=30)setDays(v)}} />
-          <span style={{fontSize:'0.7rem',color:'#8B7E74',marginLeft:'0.5rem'}}>身份</span>
-          {IDENTITIES.map(id=><button key={id.key} className={`chip ${identity===id.key?'active':''}`} style={{fontSize:'0.7rem',padding:'0.3rem 0.7rem'}} onClick={()=>setIdentity(id.key)}>{id.label}</button>)}
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'0.75rem'}}>
+          <span style={{fontSize:'0.7rem',color:'#8B7E74'}}>出发日期</span>
+          <input type="date" value={dates} onChange={e=>setDates(e.target.value)} className="input-field" style={{flex:1,fontSize:'0.8rem',padding:'0.5rem',maxWidth:'10rem'}} />
         </div>
 
         {error && <div style={{padding:'0.75rem',borderRadius:'12px',background:'rgba(239,68,68,0.08)',color:'#dc2626',fontSize:'0.85rem',marginBottom:'0.75rem'}}>{error}</div>}
@@ -165,6 +155,7 @@ export default function Discover({ trips, onRefresh }) {
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:'flex',alignItems:'center',gap:'0.4rem',marginBottom:'2px'}}>
+                      {i<3 && <span style={{fontSize:'0.6rem',padding:'1px 5px',borderRadius:'4px',background:'#C75B39',color:'#fff',fontWeight:700,fontFamily:"'Noto Sans SC',sans-serif",flexShrink:0}}>{i===0?'最推荐':i===1?'必去':'精选'}</span>}
                       <span style={{fontWeight:700,fontSize:'0.9rem'}}>{a.name}</span>
                       {a.tags?.slice(0,2).map((t,j)=><span key={j} style={{fontSize:'0.6rem',padding:'1px 7px',borderRadius:'99px',background:'rgba(199,91,57,0.07)',color:'#C75B39'}}>{t}</span>)}
                     </div>

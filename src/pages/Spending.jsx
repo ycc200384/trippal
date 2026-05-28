@@ -1,167 +1,144 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getTrip } from '../services/storage';
+import { getTrip, getTrips } from '../services/storage';
 import { saveSpending, getSpendingByTrip, deleteSpending } from '../services/storage';
-import { Chart, ArcElement, Tooltip, Legend } from 'chart.js';
-Chart.register(ArcElement, Tooltip, Legend);
 
-const CATEGORIES = [
-  { key: 'transport', label: '交通', icon: '🚕', color: '#C75B39' },
-  { key: 'hotel', label: '住宿', icon: '🏨', color: '#3B82F6' },
-  { key: 'food', label: '餐饮', icon: '🍜', color: '#5B8C5A' },
-  { key: 'ticket', label: '门票', icon: '🎫', color: '#D4A853' },
-  { key: 'shopping', label: '购物', icon: '🛍', color: '#8B5CF6' },
-  { key: 'other', label: '其他', icon: '📦', color: '#6B7280' },
+const CAT = [
+  { key: 'transport', label: '交通', icon: '🚕' },
+  { key: 'hotel', label: '住宿', icon: '🏨' },
+  { key: 'food', label: '餐饮', icon: '🍜' },
+  { key: 'ticket', label: '门票', icon: '🎫' },
+  { key: 'shopping', label: '购物', icon: '🛍' },
+  { key: 'other', label: '其他', icon: '📦' },
 ];
-
-const QUICK_AMOUNTS = [15, 30, 50, 100, 200, 500];
 
 export default function Spending() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const chartRef = useRef(null);
-  const chartInstance = useRef(null);
-
   const [trip, setTrip] = useState(null);
   const [records, setRecords] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ amount: '', category: 'food', note: '' });
-  const [budget, setBudget] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      let tid = id ? Number(id) : null;
-      if (!tid) {
-        const trips = await (await import('../services/storage')).getTrips();
-        if (trips.length > 0) tid = trips[0].id;
-      }
-      if (!tid) { setTrip(null); setLoading(false); return; }
-      const t = await getTrip(tid);
-      setTrip(t);
-      if (t) setBudget(t.budget || 0);
-      setLoading(false);
+      try {
+        let tid = id ? Number(id) : null;
+        if (!tid) {
+          const ts = await getTrips();
+          tid = ts.length > 0 ? ts[0].id : null;
+        }
+        if (!tid || cancelled) { setLoading(false); return; }
+        const t = await getTrip(tid);
+        if (cancelled) return;
+        setTrip(t);
+        const r = await getSpendingByTrip(tid);
+        if (!cancelled) setRecords(r);
+      } catch (e) { console.error(e); }
+      if (!cancelled) setLoading(false);
     })();
+    return () => { cancelled = true; };
   }, [id]);
 
-  useEffect(() => {
-    if (trip) loadRecords();
-  }, [trip]);
-
-  const loadRecords = async () => { const r = await getSpendingByTrip(id); setRecords(r); };
-
-  const totalSpent = records.reduce((s, r) => s + r.amount, 0);
-  const remaining = budget - totalSpent;
-  const pct = budget > 0 ? Math.min(100, Math.round((totalSpent / budget) * 100)) : 0;
-
-  // Chart
-  useEffect(() => {
-    if (!chartRef.current || records.length === 0) return;
-    if (chartInstance.current) chartInstance.current.destroy();
-
-    const byCat = {};
-    records.forEach(r => { byCat[r.category] = (byCat[r.category] || 0) + r.amount; });
-    const labels = Object.keys(byCat).map(k => CATEGORIES.find(c => c.key === k)?.label || k);
-    const data = Object.values(byCat);
-    const colors = Object.keys(byCat).map(k => CATEGORIES.find(c => c.key === k)?.color || '#999');
-
-    chartInstance.current = new Chart(chartRef.current, {
-      type: 'pie',
-      data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#FFFBF5' }] },
-      options: { plugins: { legend: { position: 'bottom', labels: { padding: 16, font: { family: "'Noto Sans SC'", size: 12 }, color: '#2D2A26' } } }, responsive: true, maintainAspectRatio: false },
-    });
-    return () => { if (chartInstance.current) chartInstance.current.destroy(); };
-  }, [records]);
+  const total = records.reduce((s, r) => s + (r.amount || 0), 0);
+  const budget = trip?.budget || 0;
 
   const handleAdd = async () => {
-    if (!form.amount || Number(form.amount) <= 0) return;
-    await saveSpending({ tripId: Number(id), amount: Number(form.amount), category: form.category, note: form.note });
+    const amt = Number(form.amount);
+    if (!amt || amt <= 0) return;
+    const tid = trip?.id;
+    if (!tid) return;
+    await saveSpending({ tripId: tid, amount: amt, category: form.category, note: form.note });
     setForm({ amount: '', category: 'food', note: '' });
     setShowForm(false);
-    loadRecords();
+    const r = await getSpendingByTrip(tid);
+    setRecords(r);
   };
 
-  const handleDelete = async (rid) => { await deleteSpending(rid); loadRecords(); };
+  if (loading) {
+    return <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',background:'#FBF7F0'}}><div style={{width:36,height:36,border:'2px solid rgba(199,91,57,0.2)',borderTopColor:'#C75B39',borderRadius:'50%',animation:'spin 0.8s linear infinite'}} /></div>;
+  }
+
+  if (!trip) {
+    return (
+      <div style={{background:'#FBF7F0',minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'2rem',textAlign:'center'}}>
+        <img src="/panda.png" alt="" style={{width:80,height:80,borderRadius:'50%',marginBottom:'1rem'}} />
+        <p style={{fontFamily:"'Playfair Display',serif",fontSize:'1.2rem',fontStyle:'italic',marginBottom:'0.5rem'}}>还没有行程</p>
+        <button className="btn-primary" style={{width:'auto',padding:'0.75rem 2rem'}} onClick={()=>navigate('/discover')}>去规划</button>
+      </div>
+    );
+  }
 
   return (
-    <div style={{background:'#FBF7F0',minHeight:'100vh',padding:'1.25rem'}}>
+    <div style={{background:'#FBF7F0',minHeight:'100vh',padding:'1rem'}}>
       {/* Header */}
-      <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'1.25rem'}}>
-        <button onClick={()=>navigate(-1)} style={{width:'2.5rem',height:'2.5rem',borderRadius:'50%',background:'rgba(255,255,255,0.6)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center',border:'none',cursor:'pointer'}}>
+      <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'1rem'}}>
+        <button onClick={()=>navigate(-1)} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.7)',display:'flex',alignItems:'center',justifyContent:'center',border:'none',cursor:'pointer'}}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D2A26" strokeWidth="1.5"><path d="M15 19l-7-7 7-7"/></svg>
         </button>
-        <div>
-          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:'1.5rem',fontStyle:'italic',fontWeight:700}}>花费账单</h1>
-          <p style={{fontSize:'0.8rem',color:'#8B7E74'}}>{trip?.destination}</p>
+        <div style={{flex:1}}>
+          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:'1.4rem',fontStyle:'italic',fontWeight:700}}>{trip.destination}</h1>
         </div>
       </div>
 
-      {/* Budget overview */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem',marginBottom:'1rem'}}>
-        <div style={{background:'#FFFBF5',borderRadius:'16px',padding:'1rem',textAlign:'center',border:'1px solid rgba(199,91,57,0.08)'}}>
-          <div className="kpi-num" style={{fontSize:'2rem'}}>¥{totalSpent.toLocaleString()}</div>
-          <div style={{fontSize:'0.75rem',color:'#8B7E74',marginTop:'0.25rem'}}>已花费</div>
-        </div>
-        <div style={{background:'#FFFBF5',borderRadius:'16px',padding:'1rem',textAlign:'center',border:'1px solid rgba(91,140,90,0.15)'}}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:'2rem',fontWeight:700,color:remaining>=0?'#5B8C5A':'#C75B39'}}>¥{remaining.toLocaleString()}</div>
-          <div style={{fontSize:'0.75rem',color:'#8B7E74',marginTop:'0.25rem'}}>剩余预算</div>
-        </div>
+      {/* Big total */}
+      <div style={{textAlign:'center',padding:'1.5rem',marginBottom:'1rem'}}>
+        <div style={{fontSize:'0.75rem',color:'#8B7E74',marginBottom:'0.5rem'}}>总支出</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:'3rem',fontWeight:700}}>¥{total.toLocaleString()}</div>
       </div>
 
-      {/* Progress bar */}
-      <div style={{marginBottom:'1.25rem'}}>
-        <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.75rem',color:'#8B7E74',marginBottom:'0.3rem'}}>
-          <span>预算使用进度</span><span>{pct}%</span>
-        </div>
-        <div style={{height:'8px',borderRadius:'4px',background:'#e5e7eb',overflow:'hidden'}}>
-          <div style={{width:`${pct}%`,height:'100%',borderRadius:'4px',background:pct>80?'#C75B39':pct>50?'#D4A853':'#5B8C5A',transition:'width 0.5s'}} />
-        </div>
-        <div style={{fontSize:'0.7rem',color:'#8B7E74',marginTop:'0.2rem'}}>总预算 ¥{budget.toLocaleString()}</div>
-      </div>
+      {/* Simple by-category summary */}
+      {records.length > 0 && (() => {
+        const byCat = {};
+        records.forEach(r => { byCat[r.category] = (byCat[r.category]||0) + r.amount; });
+        return (
+          <div style={{background:'#FFFBF5',borderRadius:'12px',padding:'0.75rem',marginBottom:'1rem',display:'flex',flexWrap:'wrap',gap:'0.5rem'}}>
+            {Object.entries(byCat).map(([k,v]) => {
+              const c = CAT.find(x=>x.key===k);
+              return <span key={k} style={{fontSize:'0.78rem',padding:'0.25rem 0.6rem',borderRadius:'99px',background:'rgba(199,91,57,0.06)',color:'#2D2A26'}}>{c?.icon} {c?.label} ¥{v}</span>;
+            })}
+          </div>
+        );
+      })()}
 
-      {/* Pie chart */}
-      {records.length > 0 && (
-        <div style={{background:'#FFFBF5',borderRadius:'16px',padding:'1rem',marginBottom:'1rem',border:'1px solid rgba(199,91,57,0.08)'}}>
-          <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:'1rem',fontStyle:'italic',marginBottom:'0.5rem'}}>花费分类</h3>
-          <div style={{height:'220px'}}><canvas ref={chartRef} /></div>
-        </div>
-      )}
-
-      {/* Records */}
-      <div style={{marginBottom:'1rem'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.75rem'}}>
-          <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:'1rem',fontStyle:'italic'}}>记录</h3>
-          <button onClick={()=>setShowForm(!showForm)} style={{width:'2.25rem',height:'2.25rem',borderRadius:'50%',background:'#C75B39',color:'#fff',border:'none',fontSize:'1.25rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>{showForm?'−':'+'}</button>
-        </div>
-
-        {showForm && (
-          <div style={{background:'#FFFBF5',borderRadius:'16px',padding:'1rem',marginBottom:'0.75rem',border:'1px solid rgba(199,91,57,0.15)'}}>
-            <input className="input-field" type="number" placeholder="金额" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} style={{marginBottom:'0.5rem'}} />
+      {/* Add button */}
+      <div style={{textAlign:'center',marginBottom:'1rem'}}>
+        {!showForm ? (
+          <button className="btn-primary" style={{width:'auto',padding:'0.5rem 1.5rem',fontSize:'0.85rem'}} onClick={()=>setShowForm(true)}>+ 记一笔</button>
+        ) : (
+          <div style={{background:'#FFFBF5',borderRadius:'16px',padding:'1rem',textAlign:'left'}}>
+            <input className="input-field" type="number" placeholder="金额" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} style={{marginBottom:'0.5rem',fontSize:'0.9rem'}} />
             <div style={{display:'flex',gap:'0.25rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
-              {QUICK_AMOUNTS.map(a => <button key={a} onClick={()=>setForm({...form,amount:String(a)})} style={{padding:'0.3rem 0.75rem',borderRadius:'99px',border:'1px solid #e5e7eb',background:form.amount===String(a)?'#C75B39':'transparent',color:form.amount===String(a)?'#fff':'#6B7280',fontSize:'0.75rem',cursor:'pointer'}}>¥{a}</button>)}
+              {[15,30,50,100,200,500].map(a=><button key={a} onClick={()=>setForm({...form,amount:String(a)})} style={{padding:'0.25rem 0.6rem',borderRadius:'99px',border:'1px solid #e5e7eb',background:form.amount===String(a)?'#C75B39':'#fff',color:form.amount===String(a)?'#fff':'#6B7280',fontSize:'0.7rem',cursor:'pointer'}}>¥{a}</button>)}
             </div>
-            <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
-              {CATEGORIES.map(c => <button key={c.key} onClick={()=>setForm({...form,category:c.key})} className={`chip ${form.category===c.key?'active':''}`}>{c.icon} {c.label}</button>)}
+            <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
+              {CAT.map(c=><button key={c.key} onClick={()=>setForm({...form,category:c.key})} style={{padding:'0.25rem 0.6rem',borderRadius:'99px',border:form.category===c.key?'2px solid #C75B39':'1px solid #e5e7eb',background:form.category===c.key?'rgba(199,91,57,0.06)':'#fff',fontSize:'0.7rem',cursor:'pointer'}}>{c.icon} {c.label}</button>)}
             </div>
-            <input className="input-field" placeholder="备注（可选）" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} style={{marginBottom:'0.5rem'}} />
-            <button className="btn-primary" onClick={handleAdd} style={{width:'100%'}}>✓ 记下这笔</button>
+            <div style={{display:'flex',gap:'0.5rem'}}>
+              <input className="input-field" style={{flex:1,fontSize:'0.8rem',padding:'0.5rem'}} placeholder="备注（可选）" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} />
+              <button className="btn-primary" style={{width:'auto',padding:'0.5rem 1rem',fontSize:'0.8rem'}} onClick={handleAdd}>记下</button>
+            </div>
           </div>
         )}
-
-        {records.map(r => {
-          const cat = CATEGORIES.find(c => c.key === r.category);
-          return (
-            <div key={r.id} style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.75rem',background:'#FFFBF5',borderRadius:'12px',marginBottom:'0.4rem',border:'1px solid rgba(199,91,57,0.04)'}}>
-              <span style={{fontSize:'1.25rem'}}>{cat?.icon}</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:'0.85rem',fontWeight:500}}>{r.note || cat?.label}</div>
-                <div style={{fontSize:'0.7rem',color:'#8B7E74'}}>{new Date(r.createdAt).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}</div>
-              </div>
-              <span style={{fontWeight:700,fontFamily:"'Playfair Display',serif",fontSize:'1.1rem'}}>¥{r.amount}</span>
-              <button onClick={()=>handleDelete(r.id)} style={{border:'none',background:'none',color:'#d1d5db',cursor:'pointer',fontSize:'1rem',padding:'0.25rem'}}>×</button>
-            </div>
-          );
-        })}
       </div>
+
+      {/* Records list */}
+      {records.map(r => {
+        const c = CAT.find(x=>x.key===r.category);
+        return (
+          <div key={r.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.6rem',background:'#FFFBF5',borderRadius:'10px',marginBottom:'0.3rem'}}>
+            <span>{c?.icon}</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:'0.8rem'}}>{r.note || c?.label}</div>
+              <div style={{fontSize:'0.65rem',color:'#8B7E74'}}>{new Date(r.createdAt).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}</div>
+            </div>
+            <span style={{fontWeight:700,fontSize:'0.9rem'}}>¥{r.amount}</span>
+            <button onClick={()=>{deleteSpending(r.id);setRecords(prev=>prev.filter(x=>x.id!==r.id));}} style={{border:'none',background:'none',color:'#ccc',cursor:'pointer',padding:'0.2rem'}}>×</button>
+          </div>
+        );
+      })}
     </div>
   );
 }

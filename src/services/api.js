@@ -48,7 +48,7 @@ export async function getAttractions(destination) {
 }
 
 // ═══════════ DeepSeek — generate itinerary from selected spots ═══════════
-export async function generateItinerary({ destination, days, budget, style, dates, selectedSpots, identity, diet, locationHint }) {
+export async function generateItinerary({ destination, days, style, selectedSpots, identity, diet }) {
   const keys = getKeys();
   if (!keys.deepseek) throw new Error('请配置 DeepSeek API Key');
 
@@ -58,57 +58,47 @@ export async function generateItinerary({ destination, days, budget, style, date
 
   const systemPrompt = `你是专业旅游规划师。必须严格按照JSON格式输出，不要输出任何其他内容。`;
 
-  const userPrompt = `目的地：${destination} | 天数：${days}天 | 预算：¥${budget}/人 | 风格：${style}${identityText}${dietText}${locationHint||''}
+  const userPrompt = `目的地：${destination} | 天数：${days}天 | 风格：${style}${identityText}${dietText}
 
 用户选中的景点：
 ${spotList}
 
-请规划一个${days}天旅行。重要规则：
-1. 地理位置聚类：把距离近的景点分在同一天，不要跨城来回跑
-2. 时间合理性：上午适合的景点（如爬山、户外）放上午，晚上适合的（如夜市、夜景、酒吧街）放晚上
-3. 每个景点只出现一次，不要重复
-4. 景点之间交通要顺路，最好能步行或短途地铁到达
-5. 如果用户当前位置已知，以用户位置为每天出发点
+请规划一个${days}天旅行。你必须像一个专业导游一样安排路线，核心原则：
 
-输出以下JSON格式：
+1. **顺路第一**：每天景点必须地理位置相邻，步行或短途地铁可达，绝不允许上午在城东下午跑城西
+2. **名气优先**：最著名、必去的景点排在每天上午（精力最好的时候），次要景点排下午
+3. **时间合理**：户外/爬山→上午，博物馆/室内→下午，夜景→晚上
+4. **动线流畅**：景点A到B到C是一条自然的线，不走回头路
+5. 不要推荐任何餐厅、美食、小吃
+
+输出以下JSON格式（food字段必须为空字符串，type只能是"景点""活动""休息")：
 
 {
-  "summary": "一句话总结这次旅行（10字以内）",
-  "totalBudget": 总预算数字,
-  "packing": ["物品1","物品2","物品3"...共5-8个],
-  "emergency": {"police":"110","hospital":"最近的综合医院名称和电话"},
+  "summary": "一句话总结（10字以内）",
+  "packing": ["物品1","物品2"...共5-8个],
   "days": [
     {
       "day": 1,
-      "theme": "今天的主题（6字以内）",
-      "quote": "今天的金句（15字以内，有诗意）",
-      "dailyBudget": 当天预算数字,
-      "weatherNote": "天气提醒（如：晴天注意防晒）",
+      "theme": "今天主题（6字以内）",
+      "quote": "金句（15字以内）",
+      "weatherNote": "天气提醒",
       "slots": [
         {
           "time": "08:00-10:30",
-          "place": "景点或餐厅名称",
-          "type": "景点/美食/活动/休息",
-          "icon": "🌄/🍜/☕/🏛/⛰/🌙/🎫/🛍",
+          "place": "景点名称",
+          "type": "景点",
+          "icon": "🌄/🏛/⛰/🌙/🎫/🛍",
           "duration": "2.5h",
-          "ticket": 数字（免费填0）,
-          "myPrice": 数字（用户身份优惠后价格）,
-          "transport": "到达方式（如：地铁4号线宽窄巷子站、步行10分钟）",
-          "tip": "实用贴士（15字以内）",
-          "food": "附近美食推荐（可为空字符串）"
+          "ticket": 数字,
+          "myPrice": 数字,
+          "transport": "地铁X号线XX站",
+          "tip": "实用建议（15字）",
+          "food": ""
         }
       ]
     }
   ]
-}
-
-要求：
-1. 每天3-5个slots，按时间顺序排列
-2. ticket和myPrice必须根据用户身份计算（学生/老人半价，军人免票）
-3. transport必须具体（地铁几号线、哪个站下车、步行几分钟）
-4. tip必须是实用小建议（不是废话）
-5. food只填slot附近的真正值得去的店
-6. packing要根据季节和目的地实际需求`;
+}`;
 
   const res = await fetch(`${DEEPSEEK_BASE}/chat/completions`, {
     method: 'POST',
@@ -149,13 +139,37 @@ export async function adjustForWeather(currentPlan, weatherInfo) {
 // ═══════════ 和风天气 ═══════════
 export async function getWeatherByCoord(lat, lon) {
   const keys = getKeys();
-  if (!keys.qweather) return null;
-  try {
-    const res = await fetch(`${QWEATHER_BASE}/weather/now?key=${keys.qweather}&location=${lon},${lat}`);
-    const data = await res.json();
-    if (data.code !== '200') return null;
-    return { temp: data.now.temp, text: data.now.text, icon: data.now.icon, feelsLike: data.now.feelsLike };
-  } catch { return null; }
+
+  // 1. Try 和风 if key available
+  if (keys.qweather) {
+    try {
+      const res = await fetch(`${QWEATHER_BASE}/weather/now?key=${keys.qweather}&location=${lon},${lat}`);
+      const data = await res.json();
+      if (data.code === '200') {
+        return { temp: data.now.temp, text: data.now.text, feelsLike: data.now.feelsLike };
+      }
+    } catch {}
+  }
+
+  // 2. Fallback: 高德天气（用 adcode）
+  if (keys.amap) {
+    try {
+      // Get adcode from reverse geocode
+      const geoRes = await fetch(`https://restapi.amap.com/v3/geocode/regeo?key=${keys.amap}&location=${lon},${lat}&extensions=base`);
+      const geoData = await geoRes.json();
+      const adcode = geoData?.regeocode?.addressComponent?.adcode;
+      if (adcode) {
+        const wRes = await fetch(`https://restapi.amap.com/v3/weather/weatherInfo?key=${keys.amap}&city=${adcode}&extensions=base`);
+        const wData = await wRes.json();
+        if (wData.status === '1' && wData.lives?.length > 0) {
+          const live = wData.lives[0];
+          return { temp: live.temperature, text: live.weather, feelsLike: live.temperature };
+        }
+      }
+    } catch {}
+  }
+
+  return null;
 }
 
 export async function getDailyWeather(lat, lon, days = 7) {

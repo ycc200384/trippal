@@ -5,13 +5,14 @@ import { getPreferences, savePreferences, getApiKeys, saveApiKeys } from '../ser
 
 export default function Settings({ prefs, onUpdate }) {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ budget: 3000, style: '综合', identity: 'adult', diet: '' });
-  const [keys, setKeys] = useState({ deepseek: '', qweather: '', unsplash: '' });
+  const [form, setForm] = useState({ identity: 'adult', style: '综合' });
+  const [keys, setKeys] = useState({ deepseek: '', amap: '', qweather: '', unsplash: '' });
   const [saved, setSaved] = useState(false);
+  const [visible, setVisible] = useState({});
   const [history, setHistory] = useState([]);
 
   useEffect(() => {
-    setForm(prefs || { budget: 3000, style: '综合', identity: 'adult', diet: '' });
+    setForm(prefs || { identity: 'adult', style: '综合' });
     setKeys(getApiKeys());
     getTrips().then(setHistory);
   }, [prefs]);
@@ -25,67 +26,80 @@ export default function Settings({ prefs, onUpdate }) {
   };
 
   return (
-    <div style={{background:'#FBF7F0',minHeight:'100vh',overflow:'hidden',position:'relative'}}>
-      <div className="blob w-48 h-48 animate-blob" style={{background:'rgba(91,140,90,0.04)',bottom:'-2rem',left:'-2rem',position:'absolute',animationDelay:'-6s'}} />
+    <div style={{background:'#FBF7F0',minHeight:'100vh',overflowY:'auto',WebkitOverflowScrolling:'touch',paddingBottom:'6rem'}}>
+      <div style={{padding:'1.5rem 1.25rem'}}>
+        <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:'2rem',fontStyle:'italic',fontWeight:700,marginBottom:'1.5rem'}}>我的</h1>
 
-      <div style={{position:'relative',zIndex:1,padding:'1.5rem 1.25rem'}}>
-        <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'1.5rem'}}>
-          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:'2rem',fontStyle:'italic',fontWeight:700,color:'#2D2A26'}}>我的</h1>
-        </div>
-
-        {/* Identity */}
+        {/* Identity + Style */}
         <div className="card grain-card" style={{marginBottom:'1rem'}}>
-          <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:'1.1rem',fontStyle:'italic',marginBottom:'1rem'}}>身份与偏好</h3>
-          <label style={{fontSize:'0.7rem',letterSpacing:'0.18em',textTransform:'uppercase',color:'#8B7E74',display:'block',marginBottom:'0.5rem'}}>身份（影响门票价格）</label>
-          <select value={form.identity} onChange={e=>setForm({...form,identity:e.target.value})} className="input-field" style={{marginBottom:'0.75rem'}}>
+          <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:'1.1rem',fontStyle:'italic',marginBottom:'1rem'}}>偏好设置</h3>
+
+          <label style={{fontSize:'0.7rem',letterSpacing:'0.18em',textTransform:'uppercase',color:'#8B7E74',display:'block',marginBottom:'0.5rem'}}>身份（影响门票折扣）</label>
+          <select value={form.identity} onChange={e=>setForm({...form,identity:e.target.value})} className="input-field" style={{marginBottom:'1rem'}}>
             <option value="adult">成人（全价）</option>
-            <option value="student">大学生（本科及以下半价）</option>
+            <option value="student">大学生（半价）</option>
             <option value="senior">60-65岁（半价）</option>
             <option value="military">军人/残疾人（免票）</option>
-            <option value="child">儿童 1.2-1.5m（半价）</option>
+            <option value="child">儿童（半价）</option>
           </select>
-          <label style={{fontSize:'0.7rem',letterSpacing:'0.18em',textTransform:'uppercase',color:'#8B7E74',display:'block',marginBottom:'0.5rem'}}>饮食偏好</label>
-          <input className="input-field" placeholder="如：不吃辣、素食、不吃内脏" value={form.diet} onChange={e=>setForm({...form,diet:e.target.value})} style={{marginBottom:'0.75rem'}} />
-          <label style={{fontSize:'0.7rem',letterSpacing:'0.18em',textTransform:'uppercase',color:'#8B7E74',display:'block',marginBottom:'0.5rem'}}>默认预算</label>
-          <input className="input-field" type="number" value={form.budget} onChange={e=>setForm({...form,budget:Number(e.target.value)})} style={{marginBottom:'0.75rem'}} />
+
           <label style={{fontSize:'0.7rem',letterSpacing:'0.18em',textTransform:'uppercase',color:'#8B7E74',display:'block',marginBottom:'0.5rem'}}>旅行风格</label>
-          <input className="input-field" value={form.style} onChange={e=>setForm({...form,style:e.target.value})} />
+          <input className="input-field" placeholder="综合 / 美食 / 自然 / 文化 / 休闲..." value={form.style} onChange={e=>setForm({...form,style:e.target.value})} />
         </div>
 
         {/* API Keys */}
         <div className="card grain-card" style={{marginBottom:'1rem'}}>
-          <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:'1.1rem',fontStyle:'italic',marginBottom:'0.25rem'}}>API 配置</h3>
-          <p style={{fontSize:'0.7rem',color:'#8B7E74',marginBottom:'0.75rem'}}>密钥仅保存在浏览器本地</p>
-          <label style={{fontSize:'0.7rem',letterSpacing:'0.18em',textTransform:'uppercase',color:'#C75B39',display:'block',marginBottom:'0.25rem',fontWeight:600}}>DeepSeek *</label>
-          <input className="input-field" type="password" placeholder="sk-..." value={keys.deepseek} onChange={e=>setKeys({...keys,deepseek:e.target.value})} style={{marginBottom:'0.25rem',fontFamily:'JetBrains Mono,monospace',fontSize:'0.8rem'}} />
-          <p style={{fontSize:'0.65rem',color:'#8B7E74',marginBottom:'0.75rem'}}>platform.deepseek.com · 送10元</p>
-          <label style={{fontSize:'0.7rem',letterSpacing:'0.18em',textTransform:'uppercase',color:'#8B7E74',display:'block',marginBottom:'0.25rem',fontWeight:600}}>和风天气（可选）</label>
-          <input className="input-field" type="password" value={keys.qweather} onChange={e=>setKeys({...keys,qweather:e.target.value})} style={{marginBottom:'0.25rem',fontFamily:'JetBrains Mono,monospace',fontSize:'0.8rem'}} />
-          <p style={{fontSize:'0.65rem',color:'#8B7E74',marginBottom:'0.75rem'}}>dev.qweather.com · 免费</p>
-          <label style={{fontSize:'0.7rem',letterSpacing:'0.18em',textTransform:'uppercase',color:'#8B7E74',display:'block',marginBottom:'0.25rem',fontWeight:600}}>Unsplash（可选）</label>
-          <input className="input-field" type="password" value={keys.unsplash} onChange={e=>setKeys({...keys,unsplash:e.target.value})} style={{fontFamily:'JetBrains Mono,monospace',fontSize:'0.8rem'}} />
-          <p style={{fontSize:'0.65rem',color:'#8B7E74',marginTop:'0.25rem'}}>unsplash.com/developers · 免费50次/天</p>
+          <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:'1.1rem',fontStyle:'italic',marginBottom:'0.5rem'}}>API 密钥</h3>
+          <p style={{fontSize:'0.7rem',color:'#8B7E74',marginBottom:'1rem'}}>仅存浏览器本地，不上传</p>
+
+          {[
+            { key: 'deepseek', label: 'DeepSeek', required: true, hint: 'platform.deepseek.com' },
+            { key: 'amap', label: '高德地图', required: true, hint: 'console.amap.com' },
+            { key: 'qweather', label: '和风天气', required: false, hint: 'dev.qweather.com' },
+            { key: 'unsplash', label: 'Unsplash', required: false, hint: 'unsplash.com/developers' },
+          ].map(({key, label, required, hint}) => (
+            <div key={key} style={{marginBottom:'1rem'}}>
+              <label style={{fontSize:'0.7rem',letterSpacing:'0.18em',textTransform:'uppercase',color:required?'#C75B39':'#8B7E74',display:'block',marginBottom:'0.3rem',fontWeight:600}}>
+                {label} {required ? '*' : ''}
+              </label>
+              <div style={{display:'flex',gap:'0.4rem'}}>
+                <input className="input-field" type={visible[key]?'text':'password'}
+                  style={{flex:1,fontFamily:'JetBrains Mono,monospace',fontSize:'0.75rem',padding:'0.65rem'}}
+                  value={keys[key]||''}
+                  onChange={e=>setKeys({...keys,[key]:e.target.value})}
+                  placeholder={hint} />
+                <button onClick={()=>setVisible({...visible,[key]:!visible[key]})}
+                  style={{width:'2.5rem',height:'2.5rem',borderRadius:'12px',border:'1px solid rgba(139,126,116,0.2)',background:'#FFFBF5',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,color:visible[key]?'#C75B39':'#8B7E74'}}>
+                  {visible[key] ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  )}
+                </button>
+              </div>
+              <p style={{fontSize:'0.6rem',color:'#8B7E74',marginTop:'0.2rem'}}>{hint}</p>
+            </div>
+          ))}
         </div>
 
-        <button className={`btn-primary ${saved?'!bg-sage':''}`} onClick={handleSave} style={{marginBottom:'1.5rem'}}>{saved?'✓ 已保存':'保存设置'}</button>
+        <button className={`btn-primary ${saved?'!bg-sage':''}`} onClick={handleSave} style={{marginBottom:'1.5rem'}}>
+          {saved ? '✓ 已保存' : '保存设置'}
+        </button>
 
-        {/* History */}
         {history.length > 0 && (
           <div>
             <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:'1.1rem',fontStyle:'italic',marginBottom:'0.75rem'}}>历史行程</h3>
             {history.map(t => (
-              <div key={t.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.75rem',background:'#FFFBF5',borderRadius:'12px',marginBottom:'0.4rem',border:'1px solid rgba(199,91,57,0.04)'}}>
+              <div key={t.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.75rem',background:'#FFFBF5',borderRadius:'12px',marginBottom:'0.4rem'}}>
                 <div onClick={()=>navigate(`/plan/${t.id}`)} style={{flex:1,cursor:'pointer'}}>
-                  <div style={{fontSize:'0.9rem',fontWeight:500}}>{t.destination}</div>
+                  <div style={{fontSize:'0.85rem',fontWeight:500}}>{t.destination}</div>
                   <div style={{fontSize:'0.7rem',color:'#8B7E74'}}>{t.days}天 · {new Date(t.createdAt).toLocaleDateString('zh-CN')}</div>
                 </div>
-                <button onClick={async()=>{await deleteTrip(t.id);getTrips().then(setHistory);}} style={{border:'none',background:'none',color:'#d1d5db',cursor:'pointer',fontSize:'1rem'}}>×</button>
+                <button onClick={async()=>{await deleteTrip(t.id);getTrips().then(setHistory)}} style={{border:'none',background:'none',color:'#d1d5db',cursor:'pointer',fontSize:'1.2rem'}}>×</button>
               </div>
             ))}
           </div>
         )}
-
-        <p style={{textAlign:'center',fontSize:'0.7rem',color:'rgba(139,126,116,0.5)',marginTop:'1.5rem'}}>TripPal v1.0 · 所有数据仅存储在你的设备中</p>
       </div>
     </div>
   );

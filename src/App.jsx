@@ -18,6 +18,17 @@ export default function App() {
     getPreferences().then(setPrefs);
   }, [refresh]);
 
+  // Gentle resume — reload trip data but don't re-render everything
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        getTrips().then(setTrips);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
   return (
     <div style={{minHeight:'100vh',paddingBottom:'5rem',backgroundColor:'#FBF7F0',color:'#2D2A26'}}>
       <Routes>
