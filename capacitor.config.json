@@ -1,0 +1,15 @@
+{
+  "appId": "com.trippal.app",
+  "appName": "旅行管家",
+  "webDir": "dist",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#C75B39"
+    }
+  },
+  "ios": {
+    "contentInset": "always",
+    "preferredContentMode": "mobile"
+  }
+}

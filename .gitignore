@@ -1,0 +1,9 @@
+node_modules
+dist
+ios
+.android
+.capacitor
+*.log
+.env
+.DS_Store
+screenshots
